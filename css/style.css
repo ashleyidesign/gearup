@@ -39,6 +39,28 @@ body {
   clip-path: polygon(var(--cut) 0, 100% 0, 100% 100%, 0 100%, 0 var(--cut));
 }
 
+/* ---- ORANGE CORNER ACCENT ---- */
+/* Wraps chamfered elements to show an orange triangle at the cut corner */
+.corner-accent {
+  position: relative;
+}
+.corner-accent::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0;
+  width: var(--cut);
+  height: var(--cut);
+  background: var(--warm);
+  clip-path: polygon(0 0, 100% 0, 0 100%);
+  z-index: 1;
+}
+.corner-accent--sm {
+  --cut: 8px;
+}
+.corner-accent--xs {
+  --cut: 6px;
+}
+
 /* ---- APP SHELL ---- */
 .app { max-width: 480px; margin: 0 auto; padding: 1rem 1.25rem 2rem; }
 
@@ -48,7 +70,7 @@ body {
 }
 
 .logo {
-  font-size: 1.15rem; font-weight: 800; color: var(--accent);
+  font-size: 1.15rem; font-weight: 800; color: var(--warm);
   display: flex; align-items: center; gap: .4rem;
   text-transform: uppercase; letter-spacing: .04em;
 }
@@ -56,7 +78,11 @@ body {
 
 .section-label {
   font-size: .6rem; text-transform: uppercase; letter-spacing: .1em;
-  color: var(--text-muted); font-weight: 700; margin-bottom: .4rem;
+  color: #fff; font-weight: 700; margin-bottom: .4rem;
+  background: var(--warm);
+  display: inline-block;
+  padding: .15rem .5rem;
+  clip-path: polygon(4px 0, 100% 0, 100% 100%, 0 100%, 0 4px);
 }
 
 /* ---- DATE SELECTOR ---- */
@@ -106,10 +132,11 @@ body {
 .date-picker-input { position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
 
 /* ---- PLANNED WORKOUT TILE ---- */
+.corner-accent:has(.planned-tile) { margin-bottom: 1rem; }
 .planned-tile {
   background: var(--surface);
   border: 2px solid var(--border);
-  padding: .85rem 1rem; margin-bottom: 1rem;
+  padding: .85rem 1rem;
   position: relative; overflow: hidden;
   clip-path: polygon(var(--cut) 0, 100% 0, 100% 100%, 0 100%, 0 var(--cut));
 }
@@ -121,14 +148,17 @@ body {
 
 .planned-label {
   font-size: .6rem; text-transform: uppercase; letter-spacing: .1em;
-  color: var(--text-muted); font-weight: 700; margin-bottom: .35rem;
-  display: flex; align-items: center; gap: .35rem;
+  color: #fff; font-weight: 700; margin-bottom: .35rem;
+  display: inline-flex; align-items: center; gap: .35rem;
+  background: var(--warm);
+  padding: .15rem .5rem;
+  clip-path: polygon(4px 0, 100% 0, 100% 100%, 0 100%, 0 4px);
 }
 .planned-label .dot {
   width: 6px; height: 6px; border-radius: 50%;
-  background: var(--warm); animation: pulse 2s ease-in-out infinite;
+  background: #fff; animation: pulse 2s ease-in-out infinite;
 }
-.planned-tile.no-plan .planned-label .dot { background: var(--text-muted); animation: none; }
+.planned-tile.no-plan .planned-label .dot { background: rgba(255,255,255,.5); animation: none; }
 @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:.3;} }
 
 .planned-activity {
@@ -204,9 +234,10 @@ body {
 .time-btn.active .warmest-dot { background: #fff; }
 
 /* ---- WEATHER HERO ---- */
+.corner-accent:has(.wx-hero) { margin-bottom: 1rem; }
 .wx-hero {
   background: var(--surface); border: 2px solid var(--border);
-  padding: 1rem; margin-bottom: 1rem;
+  padding: 1rem;
   clip-path: polygon(var(--cut) 0, 100% 0, 100% 100%, 0 100%, 0 var(--cut));
 }
 .wx-top { display: flex; justify-content: space-between; align-items: flex-start; }
@@ -235,8 +266,11 @@ body {
 .kit-section { margin-top: .25rem; }
 .kit-header {
   font-size: .6rem; text-transform: uppercase; letter-spacing: .1em;
-  color: var(--text-muted); font-weight: 700; margin-bottom: .5rem;
-  display: flex; align-items: center; gap: .4rem;
+  color: #fff; font-weight: 700; margin-bottom: .5rem;
+  display: inline-flex; align-items: center; gap: .4rem;
+  background: var(--warm);
+  padding: .15rem .5rem;
+  clip-path: polygon(4px 0, 100% 0, 100% 100%, 0 100%, 0 4px);
 }
 
 .gear-src {
@@ -244,23 +278,28 @@ body {
   text-transform: uppercase; letter-spacing: .03em;
   clip-path: polygon(4px 0, 100% 0, 100% 100%, 0 100%, 0 4px);
 }
-.gear-src.sheet { background: var(--accent-light); color: var(--accent); }
-.gear-src.fallback { background: var(--warm-light); color: var(--warm); }
+.gear-src.sheet { background: rgba(255,255,255,.85); color: var(--accent); }
+.gear-src.fallback { background: rgba(255,255,255,.85); color: var(--text-dim); }
 
 .kit-list { list-style: none; }
 
 .kit-item {
   display: flex; align-items: center; gap: .65rem;
-  padding: .6rem .75rem; margin-bottom: .35rem;
+  padding: .6rem .75rem;
   background: var(--surface);
   border-left: 4px solid var(--accent); transition: all .15s;
   clip-path: polygon(8px 0, 100% 0, 100% 100%, 0 100%, 0 8px);
 }
+.kit-list .corner-accent--sm { margin-bottom: .35rem; }
 .kit-item:hover { background: var(--surface-2); }
 .kit-item.optional { border-left-color: var(--border); opacity: .6; }
 .kit-item.gap { border-left-color: var(--warm); border-left-style: dashed; }
 
 .kit-icon { font-size: 1.1rem; flex-shrink: 0; width: 26px; text-align: center; }
+.kit-zone-label {
+  font-size: .5rem; text-transform: uppercase; letter-spacing: .08em;
+  color: var(--warm); font-weight: 700;
+}
 .kit-main { flex: 1; min-width: 0; }
 .kit-name { font-weight: 700; font-size: .82rem; line-height: 1.25; }
 .kit-brand { font-size: .64rem; color: var(--accent); font-weight: 600; }
@@ -278,9 +317,10 @@ body {
 
 /* ---- ALERTS ---- */
 .alerts { margin-top: .6rem; }
+.corner-accent:has(.alert) { margin-bottom: .25rem; }
 .alert {
   display: flex; align-items: flex-start; gap: .4rem;
-  padding: .5rem .75rem; margin-bottom: .25rem;
+  padding: .5rem .75rem;
   background: var(--surface);
   font-size: .72rem; color: var(--text-dim);
   border-left: 4px solid var(--warm);

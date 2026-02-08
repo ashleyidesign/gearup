@@ -468,7 +468,7 @@ function render() {
   // Planned Workout Tile
   if (plannedWorkout) {
     var pw = plannedWorkout, pwAct = ACTS[pw.gearKey] || {};
-    html += '<div class="planned-tile">';
+    html += '<div class="corner-accent"><div class="planned-tile">';
     html += '<div class="planned-label"><span class="dot"></span> PLANNED WORKOUT \u00b7 '+pw.source+'</div>';
     html += '<div class="planned-activity"><span class="emoji">'+(pwAct.emoji||'\ud83c\udfcb\ufe0f')+'</span> '+pw.workoutName+'</div>';
     html += '<div class="planned-details">';
@@ -479,18 +479,18 @@ function render() {
     if (pw.elevation) html += '<span>\u26f0\ufe0f <strong>'+pw.elevation+'</strong></span>';
     html += '</div>';
     html += '<div class="planned-note">Loaded from '+pw.source+' \u00b7 Change activity or time below to override</div>';
-    html += '</div>';
+    html += '</div></div>';
   } else {
     var allForDate = ALL_WORKOUTS.filter(function(wk) { return wk.date === currentDate; });
     var indoorOnly = allForDate.length > 0 && !allForDate.some(function(wk) { return wk.needsGearRec; });
     if (indoorOnly) {
-      html += '<div class="planned-tile no-plan"><div class="planned-label"><span class="dot"></span> INDOOR WORKOUT \u00b7 HumanGo</div>';
+      html += '<div class="corner-accent"><div class="planned-tile no-plan"><div class="planned-label"><span class="dot"></span> INDOOR WORKOUT \u00b7 HumanGo</div>';
       html += '<div class="planned-activity">\ud83c\udfcb\ufe0f '+allForDate[0].workoutName+'</div>';
-      html += '<div class="planned-note">Indoor \u2014 no gear rec needed. Select an outdoor activity below if needed.</div></div>';
+      html += '<div class="planned-note">Indoor \u2014 no gear rec needed. Select an outdoor activity below if needed.</div></div></div>';
     } else {
-      html += '<div class="planned-tile no-plan"><div class="planned-label"><span class="dot"></span> NO WORKOUT PLANNED</div>';
+      html += '<div class="corner-accent"><div class="planned-tile no-plan"><div class="planned-label"><span class="dot"></span> NO WORKOUT PLANNED</div>';
       html += '<div class="planned-activity">No outdoor workout on this day</div>';
-      html += '<div class="planned-note">Select an activity and time below</div></div>';
+      html += '<div class="planned-note">Select an activity and time below</div></div></div>';
     }
   }
 
@@ -526,14 +526,14 @@ function render() {
   html += '</div></div>';
 
   // Weather Hero
-  html += '<div class="wx-hero"><div class="wx-top"><div>';
+  html += '<div class="corner-accent"><div class="wx-hero"><div class="wx-top"><div>';
   html += '<div class="wx-temp '+tempColor(w.temp)+'">'+w.temp+'\u00b0</div>';
   html += '<div class="wx-feels">Feels '+w.feels+'\u00b0 \u00b7 Activity '+effTemp+'\u00b0</div>';
   html += '</div><div class="wx-right"><div class="wx-icon">'+wxEmoji(w.code)+'</div><div class="wx-desc">'+wxLabel(w.code)+'</div></div></div>';
   html += '<div class="wx-details">';
   html += '<div class="wx-detail">\ud83d\udca8 <strong>'+w.wind+'</strong>mph (gusts <strong>'+w.gusts+'</strong>)</div>';
   html += '<div class="wx-detail">\ud83d\udca7 <strong>'+Math.round(w.precip*100)+'%</strong> precip</div>';
-  html += '</div></div>';
+  html += '</div></div></div>';
 
   // Kit List
   var srcLabel = gearSource === 'sheet' ? '<span class="gear-src sheet">SHEET (' + GEAR.length + ')</span>' : '<span class="gear-src fallback">OFFLINE' + (gearError ? ': ' + gearError : '') + '</span>';
@@ -543,13 +543,14 @@ function render() {
     var cls = kitItem.status === 'gap' ? 'gap' : kitItem.status === 'optional' ? 'optional' : '';
     var badgeCls = kitItem.status === 'gap' ? 'gap-badge' : kitItem.status === 'optional' ? 'opt' : 'rec';
     var badgeText = kitItem.status === 'gap' ? 'MISSING' : kitItem.status === 'optional' ? 'OPTIONAL' : '';
-    html += '<li class="kit-item '+cls+'"><div class="kit-icon">'+kitItem.icon+'</div><div class="kit-main">';
+    html += '<li class="corner-accent corner-accent--sm"><div class="kit-item '+cls+'"><div class="kit-main">';
+    html += '<div class="kit-zone-label">'+kitItem.label+'</div>';
     if (kitItem.brand) html += '<div class="kit-brand '+(kitItem.status==='gap'?'generic':'')+'">'+kitItem.brand+'</div>';
     html += '<div class="kit-name">'+kitItem.name+'</div>';
     if (kitItem.sub) html += '<div class="kit-sub">'+kitItem.sub+'</div>';
     html += '</div>';
     if (badgeText) html += '<div class="kit-badge '+badgeCls+'">'+badgeText+'</div>';
-    html += '</li>';
+    html += '</div></li>';
   }
   html += '</ul></div>';
 
@@ -558,7 +559,7 @@ function render() {
     html += '<div class="alerts">';
     for (var ai = 0; ai < alerts.length; ai++) {
       var a = alerts[ai];
-      html += '<div class="alert '+(a.type==='info'?'info':'')+'"><span class="alert-icon">'+a.icon+'</span><span>'+a.text+'</span></div>';
+      html += '<div class="corner-accent corner-accent--xs"><div class="alert '+(a.type==='info'?'info':'')+'"><span class="alert-icon">'+a.icon+'</span><span>'+a.text+'</span></div></div>';
     }
     html += '</div>';
   }
