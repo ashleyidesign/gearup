@@ -281,4 +281,317 @@ var ZONE_CONFIG = {
   "torso-base":  { icon:"\ud83d\udc55", label:"Base Layer", required:["xc-ski","uphill-ski","downhill-ski","hike","snowshoe","run-road","run-trail","road-bike","mtb","fat-bike","stud-bike","snowmobile","dirtbike","dog-walk"], generic:"Moisture-wicking base layer" },
   "torso-mid":   { icon:"\ud83e\uddba", label:"Mid Layer", required:["xc-ski","uphill-ski","downhill-ski","snowshoe","snowmobile","dirtbike"], generic:"Fleece or insulated vest" },
   "torso-shell": { icon:"\ud83e\udde5", label:"Shell",     required:[], generic:"Wind/rain shell" },
-  "hands":       { icon:"\ud83e\udde4", label:"Gloves",    required:["xc-ski","uphill-ski","downhill-ski","snowshoe","fat-bike
+  "hands":       { icon:"\ud83e\udde4", label:"Gloves",    required:["xc-ski","uphill-ski","downhill-ski","snowshoe","fat-bike","stud-bike","snowmobile","dirtbike"], generic:"Wind-resistant gloves" },
+  "legs":        { icon:"\ud83d\udc56", label:"Legs",      required:["xc-ski","uphill-ski","downhill-ski","hike","snowshoe","run-road","run-trail","road-bike","mtb","fat-bike","stud-bike","snowmobile","dirtbike","dog-walk"], generic:"Pants or tights" },
+  "feet":        { icon:"\ud83e\udd7e", label:"Footwear",  required:["xc-ski","uphill-ski","downhill-ski","hike","snowshoe","run-road","run-trail","road-bike","mtb","fat-bike","stud-bike"], generic:"Activity-appropriate footwear" }
+};
+var ZONE_ORDER = ["head","neck","torso-base","torso-mid","torso-shell","hands","legs","feet"];
+
+// ============================================================
+// WEATHER
+// ============================================================
+var WX_CODES = {
+  0:"\u2600\ufe0f Clear",1:"\ud83c\udf24 Mostly clear",2:"\u26c5 Partly cloudy",3:"\u2601\ufe0f Overcast",
+  45:"\ud83c\udf2b Fog",48:"\ud83c\udf2b Rime fog",51:"\ud83c\udf27 Light drizzle",53:"\ud83c\udf27 Drizzle",55:"\ud83c\udf27 Heavy drizzle",
+  61:"\ud83c\udf27 Light rain",63:"\ud83c\udf27 Rain",65:"\ud83c\udf27 Heavy rain",66:"\ud83c\udf27\u2744 Freezing drizzle",67:"\ud83c\udf27\u2744 Freezing rain",
+  71:"\ud83c\udf28 Light snow",73:"\ud83c\udf28 Snow",75:"\ud83c\udf28 Heavy snow",77:"\ud83c\udf28 Snow grains",
+  80:"\ud83c\udf26 Showers",81:"\ud83c\udf26 Showers",82:"\ud83c\udf26 Heavy showers",85:"\ud83c\udf28 Snow showers",86:"\ud83c\udf28 Heavy snow showers",
+  95:"\u26c8 Thunderstorm",96:"\u26c8 T-storm + hail",99:"\u26c8 Severe t-storm"
+};
+var wxEmoji = function(c) { return (WX_CODES[c]||"\u2753").split(" ")[0]; };
+var wxLabel = function(c) { return (WX_CODES[c]||"Unknown").replace(/^[^\s]+\s/,""); };
+var isPrecip = function(c) { return c >= 51; };
+var LAT = 44.39, LON = -70.22;
+
+async function fetchWeather() {
+  var r = await fetch('https://api.open-meteo.com/v1/forecast?latitude='+LAT+'&longitude='+LON+'&hourly=temperature_2m,apparent_temperature,windspeed_10m,windgusts_10m,precipitation_probability,weathercode&temperature_unit=fahrenheit&windspeed_unit=mph&timezone=America%2FNew_York&forecast_days=7');
+  if (!r.ok) throw new Error(r.status);
+  return r.json();
+}
+function getHourlyTemps(data, dateStr) {
+  var times = data.hourly.time, temps = {};
+  for (var h = 5; h <= 17; h++) {
+    var key = dateStr + 'T' + String(h).padStart(2,'0') + ':00';
+    var idx = times.indexOf(key);
+    if (idx !== -1) temps[h] = Math.round(data.hourly.temperature_2m[idx]);
+  }
+  return temps;
+}
+function getWx(data, dateStr, hour) {
+  var times = data.hourly.time;
+  var target = dateStr + 'T' + String(hour).padStart(2,'0') + ':00';
+  var idx = times.indexOf(target);
+  if (idx === -1) return null;
+  var hours = [];
+  for (var i = Math.max(0,idx-2); i <= Math.min(times.length-1,idx+3); i++) {
+    hours.push({
+      label: new Date(times[i]).toLocaleTimeString('en-US',{hour:'numeric',hour12:true}),
+      temp: Math.round(data.hourly.temperature_2m[i]),
+      feels: Math.round(data.hourly.apparent_temperature[i]),
+      wind: Math.round(data.hourly.windspeed_10m[i]),
+      gusts: Math.round(data.hourly.windgusts_10m[i]),
+      precip: data.hourly.precipitation_probability[i]/100,
+      code: data.hourly.weathercode[i],
+      active: i === idx
+    });
+  }
+  return { now: hours.find(function(h){return h.active;}), hours: hours };
+}
+
+// ============================================================
+// DECISION ENGINE
+// ============================================================
+function score(gear, wx, act) {
+  var s = 1, eff = wx.feels + act.tempAdj;
+  if (eff < gear.tempMin) s -= Math.min(.4, (gear.tempMin-eff)*.02);
+  if (eff > gear.tempMax) s -= Math.min(.4, (eff-gear.tempMax)*.025);
+  if (wx.wind>10) { var gap = Math.min(1,wx.wind/25)-gear.wind; if(gap>0) s -= gap*.25*act.windNeed; }
+  if (wx.precip>.3||isPrecip(wx.code)) { var need=Math.max(wx.precip,isPrecip(wx.code)?.6:0); var g2=need-gear.water; if(g2>0) s -= g2*.3*act.waterNeed; }
+  var bg = act.breatheNeed-gear.breathe; if(bg>.25) s -= bg*.12;
+  return Math.max(0,Math.min(1,s));
+}
+function shouldWearShell(wx, act) {
+  if (isPrecip(wx.code)) return { wear:true, why:wxLabel(wx.code)+' expected' };
+  if (wx.precip > .5) return { wear:true, why:Math.round(wx.precip*100)+'% chance of precip' };
+  if (wx.gusts >= 25) return { wear:true, why:'Gusts to '+wx.gusts+'mph' };
+  if (wx.wind >= 15) return { wear:true, why:wx.wind+'mph sustained wind' };
+  if (wx.feels < 10 && wx.wind >= 8) return { wear:true, why:'Cold + wind' };
+  if (wx.feels < 20 && wx.wind >= 12) return { wear:true, why:wx.feels+'\u00b0F + '+wx.wind+'mph wind' };
+  return { wear:false, why:null };
+}
+function shouldIncludeZone(zone, wx, act, actKey) {
+  if (zone === "neck") return wx.feels < 25 || wx.wind > 12;
+  if (zone === "torso-mid") return (wx.feels + act.tempAdj) < 35;
+  if (zone === "torso-shell") return true;
+  if (zone === "hands") return ZONE_CONFIG[zone].required.indexOf(actKey) !== -1 || wx.feels < 35;
+  return true;
+}
+function buildKit(wx, actKey) {
+  var act = ACTS[actKey], shell = shouldWearShell(wx, act), effTemp = Math.round(wx.feels + act.tempAdj);
+  var kit = [], alerts = [];
+  for (var zi = 0; zi < ZONE_ORDER.length; zi++) {
+    var zone = ZONE_ORDER[zi], cfg = ZONE_CONFIG[zone];
+    var isReq = cfg.required.indexOf(actKey) !== -1, isShell = zone === "torso-shell";
+    if (!isReq && !isShell && !shouldIncludeZone(zone, wx, act, actKey)) continue;
+    var cands = GEAR.filter(function(g) { return g.zone === zone && (g.activities.indexOf(actKey) !== -1 || g.activities.indexOf("all") !== -1); });
+    if (isShell) {
+      var sg = cands.find(function(g){return g.isShell;});
+      if (shell.wear) {
+        if (sg) kit.push({ zone:zone, icon:cfg.icon, label:cfg.label, brand:sg.brand, name:sg.model, status:"wear", sub:shell.why });
+        else kit.push({ zone:zone, icon:cfg.icon, label:cfg.label, brand:null, name:cfg.generic, status:"gap", sub:"No shell in inventory" });
+      }
+      continue;
+    }
+    if (cands.length === 0) { if (isReq) kit.push({ zone:zone, icon:cfg.icon, label:cfg.label, brand:null, name:cfg.generic, status:"gap", sub:"Not in your inventory yet" }); continue; }
+    var best = cands[0], bs = -1;
+    for (var ci = 0; ci < cands.length; ci++) { var sc = score(cands[ci], wx, act); if (sc > bs) { best = cands[ci]; bs = sc; } }
+    var sub = null;
+    if (bs < .5) sub = "Not ideal but it's what you have";
+    else if (effTemp < best.tempMin) sub = "Might run cold \u2014 layer up";
+    else if (effTemp > best.tempMax + 5) sub = "Could overheat \u2014 vent early";
+    kit.push({ zone:zone, icon:cfg.icon, label:cfg.label, brand:best.brand, name:best.model, status: isReq ? "wear" : "optional", sub:sub });
+  }
+  if (act.note) alerts.push({ icon:"\ud83d\udcdd", text:act.note, type:"info" });
+  var gaps = kit.filter(function(k){return k.status==="gap";});
+  if (gaps.length) alerts.push({ icon:"\u26a0\ufe0f", text:gaps.length+' zone'+(gaps.length>1?'s':'')+' missing from inventory' });
+  if (effTemp < -5) alerts.push({ icon:"\ud83e\udd76", text:'Effective temp is '+effTemp+'\u00b0F \u2014 extra layers' });
+  if (wx.gusts > 30) alerts.push({ icon:"\ud83d\udca8", text:'Gusts to '+wx.gusts+'mph \u2014 brutal' });
+  if (!shell.wear && wx.wind > 8) alerts.push({ icon:"\u2139\ufe0f", text:'Wind '+wx.wind+'mph \u2014 vest should handle it', type:"info" });
+  return { kit:kit, alerts:alerts, effTemp:effTemp, shell:shell };
+}
+
+// ============================================================
+// DATE HELPERS
+// ============================================================
+function toDateStr(d) { return d.toLocaleDateString('en-CA', { timeZone:'America/New_York' }); }
+function getWeekDates() {
+  var dates = [], now = new Date();
+  for (var i = 0; i < 7; i++) {
+    var d = new Date(now); d.setDate(now.getDate() + i);
+    var ds = toDateStr(d);
+    dates.push({ dateStr:ds, dayName:d.toLocaleDateString('en-US',{timeZone:'America/New_York',weekday:'short'}), dayNum:d.toLocaleDateString('en-US',{timeZone:'America/New_York',day:'numeric'}), isToday:i===0, hasWorkout:hasWorkout(ds) });
+  }
+  return dates;
+}
+
+// ============================================================
+// STATE + RENDER
+// ============================================================
+var currentAct = null, currentHour = 9, currentDate = null;
+var wxData = null, hourlyTemps = {}, plannedWorkout = null;
+var userOverrodeActivity = false;
+
+function tempColor(f) { return f <= 15 ? 'cold' : f <= 40 ? 'mild' : 'warm'; }
+
+function selectDate(dateStr) {
+  currentDate = dateStr;
+  hourlyTemps = getHourlyTemps(wxData, dateStr);
+  plannedWorkout = getWorkoutForDate(dateStr);
+  if (plannedWorkout && plannedWorkout.gearKey && ACTS[plannedWorkout.gearKey]) {
+    if (!userOverrodeActivity) currentAct = plannedWorkout.gearKey;
+    currentHour = plannedWorkout.startHour || 9;
+  } else {
+    if (!userOverrodeActivity) currentAct = currentAct || 'xc-ski';
+    currentHour = 9;
+  }
+  if (hourlyTemps[currentHour] === undefined) {
+    var avail = Object.keys(hourlyTemps).map(Number);
+    if (avail.length) currentHour = avail[Math.floor(avail.length / 2)];
+  }
+  render();
+}
+
+function render() {
+  var wx = getWx(wxData, currentDate, currentHour);
+  if (!wx) { document.getElementById('app').innerHTML = '<div class="header"><div class="logo"><span>\u2699\ufe0f</span> GearUp</div></div><div class="error-state">No weather data for that date/time</div>'; return; }
+  var w = wx.now, act = ACTS[currentAct];
+  var result = buildKit(w, currentAct);
+  var kit = result.kit, alerts = result.alerts, effTemp = result.effTemp;
+  var weekDates = getWeekDates();
+  var warmestHour = null, warmestTemp = -999;
+  for (var h in hourlyTemps) { if (hourlyTemps[h] > warmestTemp) { warmestTemp = hourlyTemps[h]; warmestHour = +h; } }
+
+  var html = '<div class="header"><div class="logo"><span>\u2699\ufe0f</span> GearUp</div></div>';
+
+  // Date Tabs + Picker
+  html += '<div class="date-section"><div class="section-label">Date</div><div class="date-row"><div class="date-tabs">';
+  for (var i = 0; i < weekDates.length; i++) {
+    var d = weekDates[i];
+    html += '<button class="date-btn '+(d.dateStr===currentDate?'active':'')+' '+(d.isToday?'today':'')+'" data-date="'+d.dateStr+'">';
+    html += '<span class="day-name">'+(d.isToday?'Today':d.dayName)+'</span>';
+    html += '<span class="day-num">'+d.dayNum+'</span>';
+    if (d.hasWorkout) html += '<span class="workout-dot"></span>';
+    html += '</button>';
+  }
+  html += '</div><div class="date-picker-wrap"><div class="date-picker-btn">\ud83d\udcc5</div><input type="date" class="date-picker-input" id="datePicker" value="'+currentDate+'"></div></div></div>';
+
+  // Planned Workout Tile
+  if (plannedWorkout) {
+    var pw = plannedWorkout, pwAct = ACTS[pw.gearKey] || {};
+    html += '<div class="planned-tile">';
+    html += '<div class="planned-label"><span class="dot"></span> PLANNED WORKOUT \u00b7 '+pw.source+'</div>';
+    html += '<div class="planned-activity"><span class="emoji">'+(pwAct.emoji||'\ud83c\udfcb\ufe0f')+'</span> '+pw.workoutName+'</div>';
+    html += '<div class="planned-details">';
+    if (pw.durationStr) html += '<span>\u23f1 <strong>'+pw.durationStr+'</strong></span>';
+    html += '<span>\ud83d\udcaa <strong>'+pw.intensity+'</strong></span>';
+    if (pw.hrTarget) html += '<span>\u2764\ufe0f <strong>'+pw.hrTarget+'</strong></span>';
+    if (pw.distance) html += '<span>\ud83d\udccf <strong>'+pw.distance+' mi</strong></span>';
+    if (pw.elevation) html += '<span>\u26f0\ufe0f <strong>'+pw.elevation+'</strong></span>';
+    html += '</div>';
+    html += '<div class="planned-note">Loaded from '+pw.source+' \u00b7 Change activity or time below to override</div>';
+    html += '</div>';
+  } else {
+    var allForDate = ALL_WORKOUTS.filter(function(wk) { return wk.date === currentDate; });
+    var indoorOnly = allForDate.length > 0 && !allForDate.some(function(wk) { return wk.needsGearRec; });
+    if (indoorOnly) {
+      html += '<div class="planned-tile no-plan"><div class="planned-label"><span class="dot"></span> INDOOR WORKOUT \u00b7 HumanGo</div>';
+      html += '<div class="planned-activity">\ud83c\udfcb\ufe0f '+allForDate[0].workoutName+'</div>';
+      html += '<div class="planned-note">Indoor \u2014 no gear rec needed. Select an outdoor activity below if needed.</div></div>';
+    } else {
+      html += '<div class="planned-tile no-plan"><div class="planned-label"><span class="dot"></span> NO WORKOUT PLANNED</div>';
+      html += '<div class="planned-activity">No outdoor workout on this day</div>';
+      html += '<div class="planned-note">Select an activity and time below</div></div>';
+    }
+  }
+
+  // Activity Dropdown
+  html += '<div class="activity-section"><div class="section-label">Activity</div><div class="activity-select-wrap"><select class="activity-select" id="actSelect">';
+  var groups = {};
+  for (var k in ACTS) { var v = ACTS[k]; if (!groups[v.group]) groups[v.group] = []; groups[v.group].push({ key:k, name:v.name, emoji:v.emoji }); }
+  for (var group in groups) {
+    html += '<optgroup label="'+group+'">';
+    for (var j = 0; j < groups[group].length; j++) {
+      var item = groups[group][j];
+      html += '<option value="'+item.key+'" '+(item.key===currentAct?'selected':'')+'>'+item.emoji+' '+item.name+'</option>';
+    }
+    html += '</optgroup>';
+  }
+  html += '</select><div class="select-arrow">\u25bc</div></div></div>';
+
+  // Time Tabs with Temps
+  var timeHours = [6,7,8,9,10,11,12,13,14,15,16,17];
+  html += '<div class="time-section"><div class="section-label">Time</div><div class="time-bar">';
+  for (var ti = 0; ti < timeHours.length; ti++) {
+    var th = timeHours[ti];
+    var temp = hourlyTemps[th], isWarmest = th === warmestHour;
+    var tColor = temp !== undefined ? (temp <= 15 ? 'var(--cool)' : temp <= 40 ? 'var(--accent)' : 'var(--warm)') : 'var(--text-dim)';
+    var activeColor = th === currentHour ? 'var(--bg)' : tColor;
+    var timeLabel = th > 12 ? (th-12)+'p' : (th === 12 ? '12p' : th+'a');
+    html += '<button class="time-btn '+(th===currentHour?'active':'')+'" data-hour="'+th+'">';
+    html += '<span class="time-label">'+timeLabel+'</span>';
+    if (temp !== undefined) html += '<span class="time-temp" style="color:'+activeColor+'">'+temp+'\u00b0</span>';
+    if (isWarmest && th !== currentHour) html += '<span class="warmest-dot"></span>';
+    html += '</button>';
+  }
+  html += '</div></div>';
+
+  // Weather Hero
+  html += '<div class="wx-hero"><div class="wx-top"><div>';
+  html += '<div class="wx-temp '+tempColor(w.temp)+'">'+w.temp+'\u00b0</div>';
+  html += '<div class="wx-feels">Feels '+w.feels+'\u00b0 \u00b7 Activity '+effTemp+'\u00b0</div>';
+  html += '</div><div class="wx-right"><div class="wx-icon">'+wxEmoji(w.code)+'</div><div class="wx-desc">'+wxLabel(w.code)+'</div></div></div>';
+  html += '<div class="wx-details">';
+  html += '<div class="wx-detail">\ud83d\udca8 <strong>'+w.wind+'</strong>mph (gusts <strong>'+w.gusts+'</strong>)</div>';
+  html += '<div class="wx-detail">\ud83d\udca7 <strong>'+Math.round(w.precip*100)+'%</strong> precip</div>';
+  html += '</div></div>';
+
+  // Kit List
+  var srcLabel = gearSource === 'sheet' ? '<span class="gear-src sheet">SHEET (' + GEAR.length + ')</span>' : '<span class="gear-src fallback">OFFLINE' + (gearError ? ': ' + gearError : '') + '</span>';
+  html += '<div class="kit-section"><div class="kit-header">Your kit \u00b7 '+act.name+' '+srcLabel+'</div><ul class="kit-list">';
+  for (var ki = 0; ki < kit.length; ki++) {
+    var kitItem = kit[ki];
+    var cls = kitItem.status === 'gap' ? 'gap' : kitItem.status === 'optional' ? 'optional' : '';
+    var badgeCls = kitItem.status === 'gap' ? 'gap-badge' : kitItem.status === 'optional' ? 'opt' : 'rec';
+    var badgeText = kitItem.status === 'gap' ? 'MISSING' : kitItem.status === 'optional' ? 'OPTIONAL' : '';
+    html += '<li class="kit-item '+cls+'"><div class="kit-icon">'+kitItem.icon+'</div><div class="kit-main">';
+    if (kitItem.brand) html += '<div class="kit-brand '+(kitItem.status==='gap'?'generic':'')+'">'+kitItem.brand+'</div>';
+    html += '<div class="kit-name">'+kitItem.name+'</div>';
+    if (kitItem.sub) html += '<div class="kit-sub">'+kitItem.sub+'</div>';
+    html += '</div>';
+    if (badgeText) html += '<div class="kit-badge '+badgeCls+'">'+badgeText+'</div>';
+    html += '</li>';
+  }
+  html += '</ul></div>';
+
+  // Alerts
+  if (alerts.length) {
+    html += '<div class="alerts">';
+    for (var ai = 0; ai < alerts.length; ai++) {
+      var a = alerts[ai];
+      html += '<div class="alert '+(a.type==='info'?'info':'')+'"><span class="alert-icon">'+a.icon+'</span><span>'+a.text+'</span></div>';
+    }
+    html += '</div>';
+  }
+
+  document.getElementById('app').innerHTML = html;
+
+  // Wire up controls
+  var dateBtns = document.querySelectorAll('.date-btn');
+  for (var bi = 0; bi < dateBtns.length; bi++) {
+    (function(btn) { btn.addEventListener('click', function() { userOverrodeActivity = false; selectDate(btn.dataset.date); }); })(dateBtns[bi]);
+  }
+  var dp = document.getElementById('datePicker');
+  if (dp) dp.addEventListener('change', function(e) { if (e.target.value) { userOverrodeActivity = false; selectDate(e.target.value); } });
+  var actSel = document.getElementById('actSelect');
+  if (actSel) actSel.addEventListener('change', function(e) { currentAct = e.target.value; userOverrodeActivity = true; render(); });
+  var timeBtns = document.querySelectorAll('.time-btn');
+  for (var tbi = 0; tbi < timeBtns.length; tbi++) {
+    (function(btn) { btn.addEventListener('click', function() { currentHour = +btn.dataset.hour; render(); }); })(timeBtns[tbi]);
+  }
+}
+
+// ============================================================
+// BOOT
+// ============================================================
+async function init() {
+  try {
+    await Promise.all([fetchGear(), fetchWeather().then(function(d) { wxData = d; })]);
+    selectDate(toDateStr(new Date()));
+  } catch(e) {
+    document.getElementById('app').innerHTML = '<div class="header"><div class="logo"><span>\u2699\ufe0f</span> GearUp</div></div><div class="error-state">Could not load: '+e.message+'</div>';
+  }
+}
+init();
+</script>
+</body>
+</html>
